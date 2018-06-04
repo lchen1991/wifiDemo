@@ -11,7 +11,8 @@ import android.support.annotation.RequiresApi;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.text.TextUtils;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.util.Log;
 import android.view.View;
 import android.widget.ProgressBar;
@@ -22,12 +23,24 @@ import com.lchen.wifi.core.WifiEnabler;
 import com.lchen.wifi.core.WifiTracker;
 import com.lchen.wifi.widget.SwitchBar;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 @RequiresApi(api = Build.VERSION_CODES.M)
 public class MainActivity extends AppCompatActivity implements WifiTracker.WifiListener, AccessPoint.AccessPointListener {
 
     private static final String TAG = "MainActivity";
+
+    private boolean mHasPermission;
+
+    //权限请求码
+    private static final int PERMISSION_REQUEST_CODE = 0;
+    //两个危险权限需要动态申请
+    private static final String[] NEEDED_PERMISSIONS = new String[]{
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.ACCESS_FINE_LOCATION
+    };
 
     private WifiEnabler mWifiEnabler = null;
 
@@ -36,28 +49,39 @@ public class MainActivity extends AppCompatActivity implements WifiTracker.WifiL
     private ProgressBar mProgressHeader;
 
     private WifiTracker mWifiTracker;
-    private String mOpenSsid;
 
     private HandlerThread mBgThread;
+
+    private RecyclerView mWifiList;
+
+    private WifiAdapter mWifiAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        mProgressHeader = findViewById(R.id.wifi_progress_header);
 
         mBgThread = new HandlerThread(TAG, Process.THREAD_PRIORITY_BACKGROUND);
         mBgThread.start();
-
         mWifiEnabler = new WifiEnabler(this, (SwitchBar) findViewById(R.id.switch_bar));
-
         mWifiTracker = new WifiTracker(this, this, mBgThread.getLooper(), true, true, false);
         mWifiManager = mWifiTracker.getManager();
+
+        initView();
 
         mHasPermission = checkPermission();
         if (!mHasPermission) {
             requestPermission();
         }
+    }
+
+    private void initView() {
+        mProgressHeader = findViewById(R.id.wifi_progress_header);
+        mWifiList = findViewById(R.id.rv_wifi_list);
+
+        mWifiAdapter = new WifiAdapter(null);
+        mWifiList.setAdapter(mWifiAdapter);
+        mWifiList.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false));
     }
 
     @Override
@@ -67,7 +91,7 @@ public class MainActivity extends AppCompatActivity implements WifiTracker.WifiL
             mWifiEnabler.resume(this);
         }
 
-        if(mHasPermission) {
+        if (mHasPermission) {
             mWifiTracker.startTracking();
         }
     }
@@ -116,6 +140,8 @@ public class MainActivity extends AppCompatActivity implements WifiTracker.WifiL
         Log.e(TAG, " onConnectedChanged ");
     }
 
+    private List<AccessPoint> aps = new ArrayList<>();
+
     @Override
     public void onAccessPointsChanged() {
         final int wifiState = mWifiManager.getWifiState();
@@ -129,19 +155,24 @@ public class MainActivity extends AppCompatActivity implements WifiTracker.WifiL
 
                 boolean hasAvailableAccessPoints = false;
 
+                aps.clear();
                 for (AccessPoint accessPoint : accessPoints) {
 
                     if (accessPoint.getLevel() != -1) {
                         hasAvailableAccessPoints = true;
                         accessPoint.setListener(this);
-                        //preference.refresh();
+
+                        aps.add(accessPoint);
                         Log.e(TAG, " onAccessPointsChanged -  WIFI_STATE_ENABLED ::" + accessPoint.getConfigName() + "===" + accessPoint.getLevel());
                     }
+                }
 
-                    if (!hasAvailableAccessPoints) {
-                        setProgressBarVisible(true);
-                    } else {
-                        setProgressBarVisible(false);
+                if (!hasAvailableAccessPoints) {
+                    setProgressBarVisible(true);
+                } else {
+                    setProgressBarVisible(false);
+                    if (mWifiAdapter != null) {
+                        mWifiAdapter.setData(aps);
                     }
                 }
                 break;
@@ -191,21 +222,9 @@ public class MainActivity extends AppCompatActivity implements WifiTracker.WifiL
         }
     }
 
-
-    //权限请求码
-    private static final int PERMISSION_REQUEST_CODE = 0;
-    //两个危险权限需要动态申请
-    private static final String[] NEEDED_PERMISSIONS = new String[]{
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.ACCESS_FINE_LOCATION
-    };
-
-
-    private boolean mHasPermission;
-
-
     /**
      * 检查是否已经授予权限
+     *
      * @return
      */
     private boolean checkPermission() {
@@ -241,15 +260,15 @@ public class MainActivity extends AppCompatActivity implements WifiTracker.WifiL
             //如果同意权限
             if (hasAllPermission) {
                 mHasPermission = true;
-                if(mHasPermission){  //如果wifi开关是开 并且 已经获取权限
+                if (mHasPermission) {  //如果wifi开关是开 并且 已经获取权限
                     mWifiTracker.startTracking();
-                }else{
-                    Toast.makeText(MainActivity.this,"WIFI处于关闭状态或权限获取失败",Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(MainActivity.this, "WIFI处于关闭状态或权限获取失败", Toast.LENGTH_SHORT).show();
                 }
 
             } else {  //用户不同意权限
                 mHasPermission = false;
-                Toast.makeText(MainActivity.this,"获取权限失败",Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, "获取权限失败", Toast.LENGTH_SHORT).show();
             }
         }
     }
