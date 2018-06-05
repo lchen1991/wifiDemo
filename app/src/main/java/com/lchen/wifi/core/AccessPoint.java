@@ -1,6 +1,9 @@
 package com.lchen.wifi.core;
 
 import android.content.Context;
+import android.icu.text.IDNA;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
@@ -11,6 +14,7 @@ import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.RemoteException;
 import android.support.annotation.NonNull;
 import android.support.annotation.RequiresApi;
 import android.text.Spannable;
@@ -19,6 +23,8 @@ import android.text.TextUtils;
 import android.text.style.TtsSpan;
 import android.util.Log;
 import android.util.LruCache;
+
+import com.lchen.wifi.R;
 
 import java.util.ArrayList;
 import java.util.Map;
@@ -302,7 +308,6 @@ public class AccessPoint implements Comparable<AccessPoint> {
         return bssid;
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     public CharSequence getSsid() {
         SpannableString str = new SpannableString(ssid);
         str.setSpan(new TtsSpan.VerbatimBuilder(ssid).build(), 0, ssid.length(),
@@ -323,6 +328,50 @@ public class AccessPoint implements Comparable<AccessPoint> {
         }
         Log.w(TAG, "NetworkInfo is null, cannot return detailed state");
         return null;
+    }
+
+    public String getSummary() {
+        return getSettingsSummary(mConfig);
+    }
+
+    private String getSettingsSummary(WifiConfiguration config) {
+        // Update to new summary
+        StringBuilder summary = new StringBuilder();
+
+        if (isActive() && config != null && config.isPasspoint()) {
+            // This is the active connection on passpoint
+            summary.append(getSummary(mContext, getDetailedState(), false, config.providerFriendlyName));
+        } else if (isActive()) {
+            // This is the active connection on non-passpoint network
+            summary.append(getSummary(mContext, getDetailedState(), mInfo != null && WifiInfoUtils.isEphemeral(mInfo)));
+        } else if (config != null && config.isPasspoint()) {
+            summary.append(String.format("可通过%1$s连接", config.providerFriendlyName));
+        } else if (config != null && WifiConfigurationUtils.hasNoInternetAccess(config)) {
+            String message = WifiConfigurationUtils.isNetworkPermanentlyDisabled(config)
+                    ? "未检测到任何互联网连接，无法自动为您重新连接" : "无法连接到互联网。";
+            summary.append(message);
+        } else if (config != null && !WifiConfigurationUtils.isNetworkEnabled(config)) {
+            switch (WifiConfigurationUtils.getNetworkSelectionDisableReason(config)) {
+                case WifiConfigurationUtils.DISABLED_AUTHENTICATION_FAILURE:
+                    summary.append("身份验证出现问题");
+                    break;
+                case WifiConfigurationUtils.DISABLED_DHCP_FAILURE:
+                case WifiConfigurationUtils.DISABLED_DNS_FAILURE:
+                    summary.append("IP 配置失败");
+                    break;
+                case WifiConfigurationUtils.DISABLED_ASSOCIATION_REJECTION:
+                    summary.append("已停用");
+                    break;
+            }
+        } else if (mRssi == Integer.MAX_VALUE) { // Wifi out of range
+            summary.append("不在范围内");
+        } else { // In range, not disabled.
+            if (config != null) { // Is saved network
+                summary.append("已保存");
+            }
+        }
+
+        return summary.toString();
     }
 
     /**
@@ -611,6 +660,60 @@ public class AccessPoint implements Comparable<AccessPoint> {
 
     void setRssi(int rssi) {
         mRssi = rssi;
+    }
+
+    public static String getSummary(Context context, String ssid, DetailedState state,
+                                    boolean isEphemeral, String passpointProvider) {
+        if (state == DetailedState.CONNECTED && ssid == null) {
+            if (TextUtils.isEmpty(passpointProvider) == false) {
+                // Special case for connected + passpoint networks.
+                return String.format("已通过%1$s连接", passpointProvider);
+            } else if (isEphemeral) {
+                // Special case for connected + ephemeral networks.
+                return "已连接";
+            }
+        }
+
+        // Case when there is wifi connected without internet connectivity.
+        final ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (state == DetailedState.CONNECTED) {
+            WifiManager wifiManager = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            NetworkCapabilities nc = null;
+
+            try {
+                nc = cm.getNetworkCapabilities(WifiManagerUtils.getCurrentNetwork(wifiManager));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            if (nc != null) {
+                if (nc.hasCapability(nc.NET_CAPABILITY_CAPTIVE_PORTAL)) {
+                    return "登陆网络";
+                } else if (!nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+                    return "已连接，但无法访问互联网";
+                }
+            }
+        }
+        if (state == null) {
+            Log.w(TAG, "state is null, returning empty summary");
+            return "";
+        }
+        String[] formats = context.getResources().getStringArray((ssid == null) ? R.array.wifi_status : R.array.wifi_status_with_ssid);
+        int index = state.ordinal();
+
+        if (index >= formats.length || formats[index].length() == 0) {
+            return "";
+        }
+        return String.format(formats[index], ssid);
+    }
+
+    public static String getSummary(Context context, DetailedState state, boolean isEphemeral) {
+        return getSummary(context, null, state, isEphemeral, null);
+    }
+
+    public static String getSummary(Context context, DetailedState state, boolean isEphemeral,
+                                    String passpointProvider) {
+        return getSummary(context, null, state, isEphemeral, passpointProvider);
     }
 
     public static String convertToQuotedString(String string) {

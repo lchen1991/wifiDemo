@@ -170,6 +170,7 @@ public class WifiEnabler implements OnSwitchChangeListener {
 
         if (!mWifiManager.setWifiEnabled(isChecked)) {
             mSwitchBar.setEnabled(true);
+            mSwitchBar.setChecked(mWifiManager.isWifiEnabled());
             Toast.makeText(mContext, "wifi enabled error", Toast.LENGTH_SHORT).show();
         }
     }

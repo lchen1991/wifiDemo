@@ -569,7 +569,6 @@ public class WifiTracker {
             super(looper);
         }
 
-        @RequiresApi(api = Build.VERSION_CODES.M)
         @Override
         public void handleMessage(Message msg) {
             switch (msg.what) {

@@ -2,6 +2,7 @@ package com.lchen.wifi;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.HandlerThread;
@@ -20,6 +21,7 @@ import android.widget.Toast;
 
 import com.lchen.wifi.core.AccessPoint;
 import com.lchen.wifi.core.WifiEnabler;
+import com.lchen.wifi.core.WifiManagerUtils;
 import com.lchen.wifi.core.WifiTracker;
 import com.lchen.wifi.widget.SwitchBar;
 
@@ -116,6 +118,50 @@ public class MainActivity extends AppCompatActivity implements WifiTracker.WifiL
         if (mBgThread != null) {
             mBgThread.quit();
         }
+    }
+
+    public boolean onRecylerViewItemClick(View view, AccessPoint mSelectedAccessPoint) {
+        if (mSelectedAccessPoint == null) {
+            return false;
+        }
+        if (mSelectedAccessPoint.getSecurity() == AccessPoint.SECURITY_NONE &&
+                !mSelectedAccessPoint.isSaved() && !mSelectedAccessPoint.isActive()) {
+            mSelectedAccessPoint.generateOpenNetworkConfig();
+            connect(mSelectedAccessPoint.getConfig(), false);
+        } else if (mSelectedAccessPoint.isSaved()) {
+//            showDialog(mSelectedAccessPoint, WifiConfigUiBase.MODE_VIEW);
+        } else {
+//            showDialog(mSelectedAccessPoint, WifiConfigUiBase.MODE_CONNECT);
+        }
+        return true;
+    }
+
+    private void showDialog(AccessPoint accessPoint, int dialogMode) {
+        if (accessPoint != null) {
+            WifiConfiguration config = accessPoint.getConfig();
+            if (accessPoint.isActive()) {
+                return;
+            }
+        }
+
+//        if (mDialog != null) {
+//            removeDialog(WIFI_DIALOG_ID);
+//            mDialog = null;
+//        }
+//
+//        // Save the access point and edit mode
+//        mDlgAccessPoint = accessPoint;
+//        mDialogMode = dialogMode;
+//
+//        showDialog(WIFI_DIALOG_ID);
+    }
+
+    protected void connect(final WifiConfiguration config, boolean isSavedNetwork) {
+        WifiManagerUtils.connectByConfig(mWifiManager, config);
+    }
+
+    protected void connect(final int networkId, boolean isSavedNetwork) {
+        WifiManagerUtils.connectByNetworkId(mWifiManager, networkId);
     }
 
     @Override

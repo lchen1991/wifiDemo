@@ -73,8 +73,6 @@ public class WifiAdapter extends RecyclerView.Adapter<WifiAdapter.ViewHolder> {
         TextView tvWifiState;
         TextView tvWifilevel;
 
-        StringBuilder builder = new StringBuilder();
-
         public ViewHolder(View itemView) {
             super(itemView);
             tvWifiName = itemView.findViewById(R.id.tv_wifi_name);
@@ -84,24 +82,7 @@ public class WifiAdapter extends RecyclerView.Adapter<WifiAdapter.ViewHolder> {
 
         public void bind(AccessPoint accessPoint) {
             tvWifiName.setText(accessPoint.getConfigName());
-
-            builder.setLength(0);
-            if (accessPoint.isSaved()) {
-                builder.append("saved");
-            }
-            if (accessPoint.isActive()) {
-                if (!TextUtils.isEmpty(builder.toString())) {
-                    builder.append(',');
-                }
-                builder.append("active");
-            }
-            if (accessPoint.isConnectable()) {
-                if (!TextUtils.isEmpty(builder.toString())) {
-                    builder.append(',');
-                }
-                builder.append("connectable");
-            }
-            tvWifiState.setText(builder.toString());
+            tvWifiState.setText(accessPoint.getSummary());
             tvWifilevel.setText("Wifi : " + accessPoint.getLevel());
         }
     }
