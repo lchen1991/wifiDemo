@@ -24,6 +24,12 @@ public class WifiAdapter extends RecyclerView.Adapter<WifiAdapter.ViewHolder> {
 
     private List<AccessPoint> accessPoints;
 
+    private OnItemCLick onItemCLick;
+
+    public interface OnItemCLick {
+        boolean onRecylerViewItemClick(View view, AccessPoint mSelectedAccessPoint);
+    }
+
     public WifiAdapter(List<AccessPoint> accessPoints) {
         if (accessPoints == null) {
             accessPoints = new ArrayList<>();
@@ -35,6 +41,10 @@ public class WifiAdapter extends RecyclerView.Adapter<WifiAdapter.ViewHolder> {
     public WifiAdapter.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_wifi_view, parent, false);
         return new ViewHolder(view);
+    }
+
+    public void setonItemCLick(OnItemCLick onItemCLick) {
+        this.onItemCLick = onItemCLick;
     }
 
     @Override
@@ -67,20 +77,32 @@ public class WifiAdapter extends RecyclerView.Adapter<WifiAdapter.ViewHolder> {
         }
     }
 
-    static class ViewHolder extends RecyclerView.ViewHolder {
+    class ViewHolder extends RecyclerView.ViewHolder {
 
         TextView tvWifiName;
         TextView tvWifiState;
         TextView tvWifilevel;
+
+        private AccessPoint accessPoint;
 
         public ViewHolder(View itemView) {
             super(itemView);
             tvWifiName = itemView.findViewById(R.id.tv_wifi_name);
             tvWifiState = itemView.findViewById(R.id.tv_wifi_state);
             tvWifilevel = itemView.findViewById(R.id.tv_wifi_level);
+
+            itemView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (onItemCLick != null) {
+                        onItemCLick.onRecylerViewItemClick(v, accessPoint);
+                    }
+                }
+            });
         }
 
         public void bind(AccessPoint accessPoint) {
+            this.accessPoint = accessPoint;
             tvWifiName.setText(accessPoint.getConfigName());
             tvWifiState.setText(accessPoint.getSummary());
             tvWifilevel.setText("Wifi : " + accessPoint.getLevel());

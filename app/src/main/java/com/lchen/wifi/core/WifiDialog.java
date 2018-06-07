@@ -11,20 +11,22 @@ import android.support.annotation.RequiresApi;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 
 import com.lchen.wifi.R;
 
 @RequiresApi(api = Build.VERSION_CODES.M)
-class WifiDialog extends AlertDialog implements DialogInterface.OnClickListener {
+public class WifiDialog extends AlertDialog implements DialogInterface.OnClickListener {
 
     /* These values come from "wifi_peap_phase2_entries" resource array */
-    public static final int WIFI_PEAP_PHASE2_NONE       = 0;
-    public static final int WIFI_PEAP_PHASE2_MSCHAPV2   = 1;
-    public static final int WIFI_PEAP_PHASE2_GTC        = 2;
+    public static final int WIFI_PEAP_PHASE2_NONE = 0;
+    public static final int WIFI_PEAP_PHASE2_MSCHAPV2 = 1;
+    public static final int WIFI_PEAP_PHASE2_GTC = 2;
 
     public interface WifiDialogListener {
-        void onForget(WifiDialog dialog);
-        void onSubmit(WifiDialog dialog);
+        void onForget(WifiDialog dialog, AccessPoint mAccessPoint);
+
+        void onSubmit(WifiDialog dialog, AccessPoint mAccessPoint);
     }
 
     private static final int BUTTON_SUBMIT = DialogInterface.BUTTON_POSITIVE;
@@ -35,22 +37,21 @@ class WifiDialog extends AlertDialog implements DialogInterface.OnClickListener 
     private final AccessPoint mAccessPoint;
 
     private View mView;
-//    private WifiConfigController mController;
+    //    private WifiConfigController mController;
     private boolean mHideSubmitButton;
 
+    private EditText mPwdEdt;
+    private Button mBtnSub;
+    private Button mBtnFGT;
+
     public WifiDialog(Context context, WifiDialogListener listener, AccessPoint accessPoint,
-            int mode, boolean hideSubmitButton) {
+                      int mode, boolean hideSubmitButton) {
         this(context, listener, accessPoint, mode);
         mHideSubmitButton = hideSubmitButton;
     }
 
-    /*@Override
-    public WifiConfigController getController() {
-        return mController;
-    }*/
-
     public WifiDialog(Context context, WifiDialogListener listener, AccessPoint accessPoint,
-            int mode) {
+                      int mode) {
         super(context);
         mMode = mode;
         mListener = listener;
@@ -61,7 +62,10 @@ class WifiDialog extends AlertDialog implements DialogInterface.OnClickListener 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         mView = getLayoutInflater().inflate(R.layout.wifi_dialog, null);
-        setView(mView);
+        setContentView(mView);
+        mPwdEdt = mView.findViewById(R.id.wifi_pwd);
+        mBtnSub = mView.findViewById(R.id.wifi_sub);
+        mBtnFGT = mView.findViewById(R.id.wifi_fgt);
         setInverseBackgroundForced(true);
       /*  mController = new WifiConfigController(this, mView, mAccessPoint, mMode);
         super.onCreate(savedInstanceState);
@@ -77,16 +81,31 @@ class WifiDialog extends AlertDialog implements DialogInterface.OnClickListener 
         if (mAccessPoint == null) {
             mController.hideForgetButton();
         }*/
+
+        mBtnSub.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mListener.onSubmit(WifiDialog.this, mAccessPoint);
+                dismiss();
+            }
+        });
+        mBtnFGT.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mListener.onForget(WifiDialog.this, mAccessPoint);
+                dismiss();
+            }
+        });
     }
 
     public void onRestoreInstanceState(Bundle savedInstanceState) {
-            super.onRestoreInstanceState(savedInstanceState);
+        super.onRestoreInstanceState(savedInstanceState);
 //            mController.updatePassword();
     }
 
     public void dispatchSubmit() {
         if (mListener != null) {
-            mListener.onSubmit(this);
+            mListener.onSubmit(this, mAccessPoint);
         }
         dismiss();
     }
@@ -96,7 +115,7 @@ class WifiDialog extends AlertDialog implements DialogInterface.OnClickListener 
         if (mListener != null) {
             switch (id) {
                 case BUTTON_SUBMIT:
-                    mListener.onSubmit(this);
+                    mListener.onSubmit(this, mAccessPoint);
                     break;
                 case BUTTON_FORGET:
                    /* if (WifiSettings.isEditabilityLockedDown(
@@ -105,7 +124,7 @@ class WifiDialog extends AlertDialog implements DialogInterface.OnClickListener 
                                 RestrictedLockUtils.getDeviceOwner(getContext()));
                         return;
                     }*/
-                    mListener.onForget(this);
+                    mListener.onForget(this, mAccessPoint);
                     break;
             }
         }
@@ -160,9 +179,9 @@ class WifiDialog extends AlertDialog implements DialogInterface.OnClickListener 
                 config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
                 config.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN);
                 config.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.SHARED);
-                if (mPasswordView.length() != 0) {
-                    int length = mPasswordView.length();
-                    String password = mPasswordView.getText().toString();
+                if (mPwdEdt.length() != 0) {
+                    int length = mPwdEdt.length();
+                    String password = mPwdEdt.getText().toString();
                     // WEP-40, WEP-104, and 256-bit WEP (WEP-232?)
                     if ((length == 10 || length == 26 || length == 58)
                             && password.matches("[0-9A-Fa-f]*")) {
@@ -175,8 +194,8 @@ class WifiDialog extends AlertDialog implements DialogInterface.OnClickListener 
 
             case AccessPoint.SECURITY_PSK:
                 config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-                if (mPasswordView.length() != 0) {
-                    String password = mPasswordView.getText().toString();
+                if (mPwdEdt.length() != 0) {
+                    String password = mPwdEdt.getText().toString();
                     if (password.matches("[0-9A-Fa-f]{64}")) {
                         config.preSharedKey = password;
                     } else {
@@ -197,7 +216,7 @@ class WifiDialog extends AlertDialog implements DialogInterface.OnClickListener 
                         // PEAP supports limited phase2 values
                         // Map the index from the mPhase2PeapAdapter to the one used
                         // by the API which has the full list of PEAP methods.
-                        switch(phase2Method) {
+                        switch (phase2Method) {
                             case WIFI_PEAP_PHASE2_NONE:
                                 config.enterpriseConfig.setPhase2Method(WifiEnterpriseConfig.Phase2.NONE);
                                 break;
@@ -218,83 +237,12 @@ class WifiDialog extends AlertDialog implements DialogInterface.OnClickListener 
                         break;
                 }
 
-                String caCert = (String) mEapCaCertSpinner.getSelectedItem();
-                config.enterpriseConfig.setCaCertificateAliases(null);
-                config.enterpriseConfig.setCaPath(null);
-                config.enterpriseConfig.setDomainSuffixMatch(mEapDomainView.getText().toString());
-                if (caCert.equals(mUnspecifiedCertString)
-                        || caCert.equals(mDoNotValidateEapServerString)) {
-                    // ca_cert already set to null, so do nothing.
-                } else if (caCert.equals(mUseSystemCertsString)) {
-                    config.enterpriseConfig.setCaPath(SYSTEM_CA_STORE_PATH);
-                } else if (caCert.equals(mMultipleCertSetString)) {
-                    if (mAccessPoint != null) {
-                        if (!mAccessPoint.isSaved()) {
-                            Log.e("info", "Multiple certs can only be set "
-                                    + "when editing saved network");
-                        }
-                        config.enterpriseConfig.setCaCertificateAliases(
-                                mAccessPoint
-                                        .getConfig()
-                                        .enterpriseConfig
-                                        .getCaCertificateAliases());
-                    }
-                } else {
-                    config.enterpriseConfig.setCaCertificateAliases(new String[] {caCert});
-                }
-
-                // ca_cert or ca_path should not both be non-null, since we only intend to let
-                // the use either their own certificate, or the system certificates, not both.
-                // The variable that is not used must explicitly be set to null, so that a
-                // previously-set value on a saved configuration will be erased on an update.
-                if (config.enterpriseConfig.getCaCertificateAliases() != null
-                        && config.enterpriseConfig.getCaPath() != null) {
-                    Log.e(TAG, "ca_cert ("
-                            + config.enterpriseConfig.getCaCertificateAliases()
-                            + ") and ca_path ("
-                            + config.enterpriseConfig.getCaPath()
-                            + ") should not both be non-null");
-                }
-
-                String clientCert = (String) mEapUserCertSpinner.getSelectedItem();
-                if (clientCert.equals(mUnspecifiedCertString)
-                        || clientCert.equals(mDoNotProvideEapUserCertString)) {
-                    // Note: |clientCert| should not be able to take the value |unspecifiedCert|,
-                    // since we prevent such configurations from being saved.
-                    clientCert = "";
-                }
-                config.enterpriseConfig.setClientCertificateAlias(clientCert);
-                if (eapMethod == Eap.SIM || eapMethod == Eap.AKA || eapMethod == Eap.AKA_PRIME) {
-                    config.enterpriseConfig.setIdentity("");
-                    config.enterpriseConfig.setAnonymousIdentity("");
-                } else if (eapMethod == Eap.PWD) {
-                    config.enterpriseConfig.setIdentity(mEapIdentityView.getText().toString());
-                    config.enterpriseConfig.setAnonymousIdentity("");
-                } else {
-                    config.enterpriseConfig.setIdentity(mEapIdentityView.getText().toString());
-                    config.enterpriseConfig.setAnonymousIdentity(
-                            mEapAnonymousView.getText().toString());
-                }
-
-                if (mPasswordView.isShown()) {
-                    // For security reasons, a previous password is not displayed to user.
-                    // Update only if it has been changed.
-                    if (mPasswordView.length() > 0) {
-                        config.enterpriseConfig.setPassword(mPasswordView.getText().toString());
-                    }
-                } else {
-                    // clear password
-                    config.enterpriseConfig.setPassword(mPasswordView.getText().toString());
-                }
+                // clear password
+                config.enterpriseConfig.setPassword(mPwdEdt.getText().toString());
                 break;
             default:
                 return null;
         }
-
-        config.setIpConfiguration(
-                new IpConfiguration(mIpAssignment, mProxySettings,
-                        mStaticIpConfiguration, mHttpProxy));
-
         return config;
     }
 }

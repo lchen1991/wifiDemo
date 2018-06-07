@@ -2,6 +2,7 @@ package com.lchen.wifi;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.net.NetworkInfo;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -20,6 +21,7 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import com.lchen.wifi.core.AccessPoint;
+import com.lchen.wifi.core.WifiDialog;
 import com.lchen.wifi.core.WifiEnabler;
 import com.lchen.wifi.core.WifiManagerUtils;
 import com.lchen.wifi.core.WifiTracker;
@@ -30,7 +32,8 @@ import java.util.Collection;
 import java.util.List;
 
 @RequiresApi(api = Build.VERSION_CODES.M)
-public class MainActivity extends AppCompatActivity implements WifiTracker.WifiListener, AccessPoint.AccessPointListener {
+public class MainActivity extends AppCompatActivity implements WifiTracker.WifiListener, AccessPoint.AccessPointListener
+, WifiAdapter.OnItemCLick{
 
     private static final String TAG = "MainActivity";
 
@@ -83,6 +86,7 @@ public class MainActivity extends AppCompatActivity implements WifiTracker.WifiL
 
         mWifiAdapter = new WifiAdapter(null);
         mWifiList.setAdapter(mWifiAdapter);
+        mWifiAdapter.setonItemCLick(this);
         mWifiList.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false));
     }
 
@@ -120,24 +124,30 @@ public class MainActivity extends AppCompatActivity implements WifiTracker.WifiL
         }
     }
 
+    @Override
     public boolean onRecylerViewItemClick(View view, AccessPoint mSelectedAccessPoint) {
         if (mSelectedAccessPoint == null) {
             return false;
         }
+        //没有密码
         if (mSelectedAccessPoint.getSecurity() == AccessPoint.SECURITY_NONE &&
                 !mSelectedAccessPoint.isSaved() && !mSelectedAccessPoint.isActive()) {
             mSelectedAccessPoint.generateOpenNetworkConfig();
             connect(mSelectedAccessPoint.getConfig(), false);
-        } else if (mSelectedAccessPoint.isSaved()) {
-//            showDialog(mSelectedAccessPoint, WifiConfigUiBase.MODE_VIEW);
+        }
+        //已经保存
+        else if (mSelectedAccessPoint.isSaved() && !mSelectedAccessPoint.isActive()) {
+            //忘记、连接
+            connect(mSelectedAccessPoint.getConfig(), true);
         } else {
-//            showDialog(mSelectedAccessPoint, WifiConfigUiBase.MODE_CONNECT);
+            showDialog(mSelectedAccessPoint);
         }
         return true;
     }
 
-    private void showDialog(AccessPoint accessPoint, int dialogMode) {
+    private void showDialog(AccessPoint accessPoint) {
         if (accessPoint != null) {
+            //已经连接
             WifiConfiguration config = accessPoint.getConfig();
             if (accessPoint.isActive()) {
                 return;
@@ -154,6 +164,58 @@ public class MainActivity extends AppCompatActivity implements WifiTracker.WifiL
 //        mDialogMode = dialogMode;
 //
 //        showDialog(WIFI_DIALOG_ID);
+        final WifiDialog wifiDialog =  new WifiDialog(this, new WifiDialog.WifiDialogListener() {
+            @Override
+            public void onForget(WifiDialog dialog, AccessPoint accessPoint) {
+                forget(accessPoint);
+
+            }
+
+            @Override
+            public void onSubmit(WifiDialog mDialog, AccessPoint accessPoint) {
+                if (mDialog != null) {
+                    submit(accessPoint, mDialog.getConfig());
+                }
+            }
+
+        },accessPoint, 0);
+
+        wifiDialog.create();
+        wifiDialog.show();
+    }
+
+    private void forget(AccessPoint accessPoint) {
+        if (!accessPoint.isSaved()) {
+            if (accessPoint.getNetworkInfo() != null &&
+                    accessPoint.getNetworkInfo().getState() != NetworkInfo.State.DISCONNECTED) {
+                // Network is active but has no network ID - must be ephemeral.
+                WifiManagerUtils.disableEphemeralNetwork(mWifiManager, AccessPoint.convertToQuotedString(accessPoint.getSsidStr()));
+//                mWifiManager.disableEphemeralNetwork(AccessPoint.convertToQuotedString(accessPoint.getSsidStr()));
+            } else {
+                Log.e(TAG, "Failed to forget invalid network " + accessPoint.getConfig());
+                return;
+            }
+        } else {
+            WifiManagerUtils.forgetNetwork(mWifiManager, accessPoint.getConfig().networkId);
+        }
+
+        mWifiTracker.resumeScanning();
+    }
+
+    private void submit(AccessPoint accessPoint, WifiConfiguration config) {
+
+        if (config == null) {
+            if (accessPoint != null && accessPoint.isSaved()) {
+                connect(accessPoint.getConfig(), true /* isSavedNetwork */);
+            }
+        } else {
+            WifiManagerUtils.saveNetworkByConfig(mWifiManager, config);
+            if (accessPoint != null) { // Not an "Add network"
+                connect(config, false /* isSavedNetwork */);
+            }
+        }
+
+        mWifiTracker.resumeScanning();
     }
 
     protected void connect(final WifiConfiguration config, boolean isSavedNetwork) {
